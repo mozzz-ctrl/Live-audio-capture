@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Microphone Audio Streaming with Visualizer</title>
+  <style>
+    #visualizer {
+      width: 300px;
+      height: 50px;
+      background-color: #222;
+      border-radius: 5px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Live Microphone Audio Streaming with Visualizer</h2>
+
+  <button id="startBtn">Start Streaming</button>
+  <button id="stopBtn" disabled>Stop Streaming</button>
+
+  <canvas id="visualizer"></canvas>
+
+  <script>
+    let audioContext;
+    let mediaStream;
+    let sourceNode;
+    let analyser;
+    let animationId;
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const canvas = document.getElementById('visualizer');
+    const canvasCtx = canvas.getContext('2d');
+    canvas.width = 300;
+    canvas.height = 50;
+
+    startBtn.addEventListener('click', async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Your browser does not support audio streaming.');
+        return;
+      }
+
+      audioContext = new AudioContext();
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      sourceNode = audioContext.createMediaStreamSource(mediaStream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+
+      sourceNode.connect(analyser);
+      analyser.connect(audioContext.destination);
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+
+      visualize();
+    });
+
+    stopBtn.addEventListener('click', () => {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+      }
+      if (sourceNode) {
+        sourceNode.disconnect();
+      }
+      if (analyser) {
+        analyser.disconnect();
+      }
+      if (audioContext) {
+        audioContext.close();
+      }
+      cancelAnimationFrame(animationId);
+
+      canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    });
+
+    function visualize() {
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      function draw() {
+        animationId = requestAnimationFrame(draw);
+
+        analyser.getByteFrequencyData(dataArray);
+
+        canvasCtx.fillStyle = '#222';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const barWidth = (canvas.width / bufferLength) * 2.5;
+        let barHeight;
+        let x = 0;
+
+        for(let i = 0; i < bufferLength; i++) {
+          barHeight = dataArray[i] / 2;
+
+          canvasCtx.fillStyle = 'lime';
+          canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+
+          x += barWidth + 1;
+        }
+      };
+
+      draw();
+    }
+  </script>
+</body>
+</html>
