@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live Microphone Audio Streaming with Visualizer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live Microphone Audio Streaming with Noise Suppression</title>
   <style>
     #visualizer {
       width: 300px;
@@ -11,16 +11,23 @@
       background-color: #222;
       border-radius: 5px;
       margin-top: 20px;
+      display: block;
+    }
+    #noiseLevel {
+      margin-top: 10px;
+      font-family: monospace;
+      color: #0f0;
     }
   </style>
 </head>
 <body>
-  <h2>Live Microphone Audio Streaming with Visualizer</h2>
+  <h2>Live Microphone Audio Streaming with Noise Level & Background Noise Removal</h2>
 
   <button id="startBtn">Start Streaming</button>
   <button id="stopBtn" disabled>Stop Streaming</button>
 
-  <canvas id="visualizer"></canvas>
+  <canvas id="visualizer" width="300" height="50"></canvas>
+  <div id="noiseLevel">Noise Level: N/A</div>
 
   <script>
     let audioContext;
@@ -33,32 +40,38 @@
     const stopBtn = document.getElementById('stopBtn');
     const canvas = document.getElementById('visualizer');
     const canvasCtx = canvas.getContext('2d');
-    canvas.width = 300;
-    canvas.height = 50;
+    const noiseLevelDisplay = document.getElementById('noiseLevel');
 
-    startBtn.addEventListener('click', async () => {
+    async function startStreaming() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         alert('Your browser does not support audio streaming.');
         return;
       }
+      try {
+        audioContext = new AudioContext();
 
-      audioContext = new AudioContext();
-      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Enable noise suppression via constraints
+        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: { noiseSuppression: true } 
+        });
 
-      sourceNode = audioContext.createMediaStreamSource(mediaStream);
-      analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
+        sourceNode = audioContext.createMediaStreamSource(mediaStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
 
-      sourceNode.connect(analyser);
-      analyser.connect(audioContext.destination);
+        sourceNode.connect(analyser);
+        analyser.connect(audioContext.destination);
 
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
 
-      visualize();
-    });
+        visualize();
+      } catch (err) {
+        alert('Error accessing microphone: ' + err.message);
+      }
+    }
 
-    stopBtn.addEventListener('click', () => {
+    function stopStreaming() {
       if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
       }
@@ -74,10 +87,11 @@
       cancelAnimationFrame(animationId);
 
       canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+      noiseLevelDisplay.textContent = 'Noise Level: N/A';
 
       startBtn.disabled = false;
       stopBtn.disabled = true;
-    });
+    }
 
     function visualize() {
       const bufferLength = analyser.frequencyBinCount;
@@ -88,6 +102,7 @@
 
         analyser.getByteFrequencyData(dataArray);
 
+        // Clear background
         canvasCtx.fillStyle = '#222';
         canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -95,18 +110,32 @@
         let barHeight;
         let x = 0;
 
+        let sum = 0;
         for(let i = 0; i < bufferLength; i++) {
           barHeight = dataArray[i] / 2;
+          sum += dataArray[i];
 
           canvasCtx.fillStyle = 'lime';
           canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
 
           x += barWidth + 1;
         }
-      };
+        const avg = sum / bufferLength;
+        noiseLevelDisplay.textContent = 'Noise Level: ' + avg.toFixed(2);
+      }
 
       draw();
     }
+
+    startBtn.addEventListener('click', startStreaming);
+    stopBtn.addEventListener('click', stopStreaming);
+
+    // Attempt to auto start on page load (may require user interaction)
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        startStreaming();
+      }, 500);
+    });
   </script>
 </body>
 </html>
